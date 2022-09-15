@@ -11,7 +11,14 @@ from dolfin.mesh.meshfunction import MeshFunction
 
 from . import utils
 
-FiberSheetSystem = namedtuple("FiberSheetSystem", "fiber, sheet, sheet_normal")
+FiberSheetSystem = namedtuple("FiberSheetSystem", "fiber, sheet, sheet_normal,\
+    Qlv_axisf,Qlv_axiss,Qlv_axisn,\
+        Qrv_axisf,Qrv_axiss,Qrv_axisn,\
+            Qepi_axisf,Qepi_axiss,Qepi_axisn,\
+                Qlvf0, Qlvs0, Qlvn0,\
+                    Qrvf0, Qrvs0, Qrvn0,\
+                        Qendof0, Qendos0, Qendon0,alpha_w,\
+                            Qepif0, Qepis0, Qepin0")
 
 
 def laplace(
@@ -158,10 +165,34 @@ def compute_fiber_sheet_system(
     f0 = np.zeros_like(lv_gradient)
     s0 = np.zeros_like(lv_gradient)
     n0 = np.zeros_like(lv_gradient)
+    lvaf0 = np.zeros_like(lv_gradient)
+    lvas0 = np.zeros_like(lv_gradient)
+    lvan0 = np.zeros_like(lv_gradient)
+    rvaf0 = np.zeros_like(lv_gradient)
+    rvas0 = np.zeros_like(lv_gradient)
+    rvan0 = np.zeros_like(lv_gradient)
+    epiaf0 = np.zeros_like(lv_gradient)
+    epias0 = np.zeros_like(lv_gradient)
+    epian0 = np.zeros_like(lv_gradient)
+    Q_lvf0 = np.zeros_like(lv_gradient)
+    Q_lvs0 = np.zeros_like(lv_gradient)
+    Q_lvn0 = np.zeros_like(lv_gradient)
+    Q_rvf0 = np.zeros_like(lv_gradient)
+    Q_rvs0 = np.zeros_like(lv_gradient)
+    Q_rvn0 = np.zeros_like(lv_gradient)
+    Q_epif0 = np.zeros_like(lv_gradient)
+    Q_epis0 = np.zeros_like(lv_gradient)
+    Q_epin0 = np.zeros_like(lv_gradient)
+    Q_endof0 = np.zeros_like(lv_gradient)
+    Q_endos0 = np.zeros_like(lv_gradient)
+    Q_endon0 = np.zeros_like(lv_gradient)
+    alphaw = np.zeros_like(lv_scalar)
+
+   
     if marker_scalar is None:
         marker_scalar = np.zeros_like(lv_scalar)
 
-    tol = 0.1
+    tol = 1e-10
 
     from .calculus import _compute_fiber_sheet_system
 
@@ -169,6 +200,28 @@ def compute_fiber_sheet_system(
         f0,
         s0,
         n0,
+        lvaf0,
+        lvas0,
+        lvan0, 
+        rvaf0,
+        rvas0,
+        rvan0,
+        epiaf0,
+        epias0,
+        epian0, 
+        Q_lvf0,
+        Q_lvs0,
+        Q_lvn0,
+        Q_rvf0,
+        Q_rvs0,
+        Q_rvn0,
+        Q_epif0,
+        Q_epis0,
+        Q_epin0,
+        Q_endof0,
+        Q_endos0,
+        Q_endon0, 
+        alphaw,       
         dofs[:, 0],
         dofs[:, 1],
         dofs[:, 2],
@@ -197,7 +250,16 @@ def compute_fiber_sheet_system(
         tol,
     )
 
-    return FiberSheetSystem(fiber=f0, sheet=s0, sheet_normal=n0)
+    return FiberSheetSystem(fiber=f0, sheet=s0, sheet_normal=n0,\
+    Qlv_axisf = lvaf0,Qlv_axiss =lvas0,Qlv_axisn =lvan0,\
+        Qrv_axisf = rvaf0,Qrv_axiss = rvas0,Qrv_axisn = rvan0,\
+            Qepi_axisf = epiaf0,Qepi_axiss = epias0,Qepi_axisn = epian0,\
+                Qlvf0 = Q_lvf0, Qlvs0 = Q_lvs0, Qlvn0 = Q_lvn0,\
+                    Qrvf0 = Q_rvf0, Qrvs0 = Q_rvs0, Qrvn0 = Q_rvn0,\
+                        Qendof0 = Q_endof0, Qendos0 = Q_endos0, Qendon0 = Q_endon0,alpha_w = alphaw,\
+                            Qepif0 = Q_epif0, Qepis0 = Q_epis0, Qepin0 = Q_epin0,\
+
+        )
 
 
 def dofs_from_function_space(mesh: df.Mesh, fiber_space: str) -> np.ndarray:
@@ -403,6 +465,12 @@ def fiber_system_to_dolfin(
     """
     Vv = utils.space_from_string(fiber_space, mesh, dim=3)
 
+    V = utils.space_from_string(fiber_space, mesh, dim=1)
+    alphaw = df.Function(V)
+    alphaw.vector().set_local(system.alpha_w)
+    alphaw.vector().apply("insert")
+    alphaw.rename("alpha_w", "alpha_ws")   
+
     f0 = df.Function(Vv)
     f0.vector().set_local(system.fiber)
     f0.vector().apply("insert")
@@ -418,7 +486,123 @@ def fiber_system_to_dolfin(
     n0.vector().apply("insert")
     n0.rename("sheet_normal", "fibers")
 
-    return FiberSheetSystem(fiber=f0, sheet=s0, sheet_normal=n0)
+    lvaf0 = df.Function(Vv)
+    lvaf0.vector().set_local(system.Qlv_axisf)
+    lvaf0.vector().apply("insert")
+    lvaf0.rename("lvaf0", "Qlv_axisf")
+
+    lvas0 = df.Function(Vv)
+    lvas0.vector().set_local(system.Qlv_axiss)
+    lvas0.vector().apply("insert")
+    lvas0.rename("lvas0", "Qlv_axiss")
+
+    lvan0 = df.Function(Vv)
+    lvan0.vector().set_local(system.Qlv_axisn)
+    lvan0.vector().apply("insert")
+    lvan0.rename("lvan0", "Qlv_axisn")    
+
+    rvaf0 = df.Function(Vv)
+    rvaf0.vector().set_local(system.Qrv_axisf)
+    rvaf0.vector().apply("insert")
+    rvaf0.rename("rvaf0", "Qrv_axisf")
+
+    rvas0 = df.Function(Vv)
+    rvas0.vector().set_local(system.Qrv_axiss)
+    rvas0.vector().apply("insert")
+    rvas0.rename("rvas0", "Qrv_axiss")
+
+    rvan0 = df.Function(Vv)
+    rvan0.vector().set_local(system.Qrv_axisn)
+    rvan0.vector().apply("insert")
+    rvan0.rename("rvan0", "Qrv_axisn")
+
+    epiaf0 = df.Function(Vv)
+    epiaf0.vector().set_local(system.Qepi_axisf)
+    epiaf0.vector().apply("insert")
+    epiaf0.rename("epiaf0", "Qepi_axisf")
+
+    epias0 = df.Function(Vv)
+    epias0.vector().set_local(system.Qepi_axiss)
+    epias0.vector().apply("insert")
+    epias0.rename("epias0", "Qepi_axiss")
+
+    epian0 = df.Function(Vv)
+    epian0.vector().set_local(system.Qepi_axisn)
+    epian0.vector().apply("insert")
+    epian0.rename("epian0", "Qepi_axisn") 
+
+    Q_lvf0 = df.Function(Vv)
+    Q_lvf0.vector().set_local(system.Qlvf0)
+    Q_lvf0.vector().apply("insert")
+    Q_lvf0.rename("Qlvf0", "Qlvf0s")
+
+    Q_lvs0 = df.Function(Vv)
+    Q_lvs0.vector().set_local(system.Qlvs0)
+    Q_lvs0.vector().apply("insert")
+    Q_lvs0.rename("Qlvs0", "Qlvs0s")
+
+    Q_lvn0 = df.Function(Vv)
+    Q_lvn0.vector().set_local(system.Qlvn0)
+    Q_lvn0.vector().apply("insert")
+    Q_lvn0.rename("Qlvn0", "Qlvn0s")
+
+    Q_rvf0 = df.Function(Vv)
+    Q_rvf0.vector().set_local(system.Qrvf0)
+    Q_rvf0.vector().apply("insert")
+    Q_rvf0.rename("Qrvf0", "Qrvf0s")
+
+    Q_rvs0 = df.Function(Vv)
+    Q_rvs0.vector().set_local(system.Qrvs0)
+    Q_rvs0.vector().apply("insert")
+    Q_rvs0.rename("Qrvs0", "Qrvs0s")
+
+    Q_rvn0 = df.Function(Vv)
+    Q_rvn0.vector().set_local(system.Qrvn0)
+    Q_rvn0.vector().apply("insert")
+    Q_rvn0.rename("Qrvn0", "Qrvn0s")
+
+    Q_endof0 = df.Function(Vv)
+    Q_endof0.vector().set_local(system.Qendof0)
+    Q_endof0.vector().apply("insert")
+    Q_endof0.rename("Qendof0", "Qendof0s")
+
+    Q_endos0 = df.Function(Vv)
+    Q_endos0.vector().set_local(system.Qendos0)
+    Q_endos0.vector().apply("insert")
+    Q_endos0.rename("Qendos0", "Qendos0s")
+
+    Q_endon0 = df.Function(Vv)
+    Q_endon0.vector().set_local(system.Qendon0)
+    Q_endon0.vector().apply("insert")
+    Q_endon0.rename("Qendon0", "Qendon0s")
+
+    Q_epif0 = df.Function(Vv)
+    Q_epif0.vector().set_local(system.Qepif0)
+    Q_epif0.vector().apply("insert")
+    Q_epif0.rename("Qepif0", "Qepif0s")
+
+    Q_epis0 = df.Function(Vv)
+    Q_epis0.vector().set_local(system.Qepis0)
+    Q_epis0.vector().apply("insert")
+    Q_epis0.rename("Qepis0", "Qepis0s")
+
+    Q_epin0 = df.Function(Vv)
+    Q_epin0.vector().set_local(system.Qepin0)
+    Q_epin0.vector().apply("insert")
+    Q_epin0.rename("Qepin0", "Qepin0s")            
+
+
+
+    return FiberSheetSystem(fiber=f0, sheet=s0, sheet_normal=n0,\
+    Qlv_axisf = lvaf0,Qlv_axiss =lvas0,Qlv_axisn =lvan0,\
+        Qrv_axisf = rvaf0,Qrv_axiss = rvas0,Qrv_axisn = rvan0,\
+            Qepi_axisf = epiaf0,Qepi_axiss = epias0,Qepi_axisn = epian0,\
+                Qlvf0 = Q_lvf0, Qlvs0 = Q_lvs0, Qlvn0 = Q_lvn0,\
+                    Qrvf0 = Q_rvf0, Qrvs0 = Q_rvs0, Qrvn0 = Q_rvn0,\
+                        Qendof0 = Q_endof0, Qendos0 = Q_endos0, Qendon0 = Q_endon0,alpha_w = alphaw,\
+                            Qepif0 = Q_epif0, Qepis0 = Q_epis0, Qepin0 = Q_epin0,\
+
+        )
 
 
 def apex_to_base(

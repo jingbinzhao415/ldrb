@@ -23,7 +23,7 @@ def bislerp(
     if ~Qb.any():
         return Qa
 
-    tol = 1e-12
+    tol = 1e-12  #1e-12
     qa = quaternion.from_rotation_matrix(Qa)
     qb = quaternion.from_rotation_matrix(Qb)
 
@@ -68,7 +68,7 @@ def system_at_dof(
     alpha_epi: float,
     beta_endo: float,
     beta_epi: float,
-    tol: float = 1e-7,
+    tol: float = 1e-7# 1e-7,
 ) -> np.ndarray:
     """
     Compte the fiber, sheet and sheet normal at a
@@ -114,25 +114,37 @@ def system_at_dof(
     beta_s = beta_endo * (1 - depth) - beta_endo * depth
     beta_w = beta_endo * (1 - epi) + beta_epi * epi
 
-    Q_lv = np.zeros((3, 3))
-    if lv > tol:
-        Q_lv = axis(grad_ab, -1 * grad_lv)
-        Q_lv = orient(Q_lv, alpha_s, beta_s)
+    Q_epi = np.zeros((3, 3))
+    Q_epiaxis = np.zeros((3, 3))
 
-    Q_rv = np.zeros((3, 3))
-    if rv > tol:
-        Q_rv = axis(grad_ab, grad_rv)
-        Q_rv = orient(Q_rv, alpha_s, beta_s)
+    if epi >= tol:
+        Q_epi = axis(grad_ab, grad_epi)
+        Q_epiaxis = axis(grad_ab, grad_epi)
+        Q_epi = orient(Q_epiaxis, alpha_w, beta_w)
+
+    if lv >= tol:
+        Q_lv = np.zeros((3, 3))
+        Q_lvaxis = np.zeros((3, 3))
+
+        Q_lv = axis(grad_ab, -1 * grad_lv)
+        Q_lvaxis = axis(grad_ab, -1 * grad_lv)
+        Q_lv = orient(Q_lvaxis, alpha_w, beta_w)
+        Q_rvaxis = np.zeros((3, 3))
+        Q_rv = np.zeros((3, 3))
+
+        if rv >= tol:
+
+            Q_rv = np.zeros((3, 3))
+            Q_rvaxis = np.zeros((3, 3))
+        
+            Q_rv = axis(grad_ab, grad_rv)
+            Q_rvaxis = axis(grad_ab, grad_rv)
+            Q_rv = orient(Q_rvaxis, -alpha_w, -beta_w)
 
     Q_endo = bislerp(Q_lv, Q_rv, depth)
-
-    Q_epi = np.zeros((3, 3))
-    if epi > tol:
-        Q_epi = axis(grad_ab, grad_epi)
-        Q_epi = orient(Q_epi, alpha_w, beta_w)
-
     Q_fiber = bislerp(Q_endo, Q_epi, epi)
-    return Q_fiber
+
+    return Q_fiber, Q_lvaxis, Q_rvaxis, Q_epiaxis,Q_lv,Q_rv,Q_epi,Q_endo,alpha_w
 
 
 @numba.njit
@@ -200,6 +212,28 @@ def _compute_fiber_sheet_system(
     f0,
     s0,
     n0,
+    lvaf0,
+    lvas0,
+    lvan0, 
+    rvaf0,
+    rvas0,
+    rvan0,
+    epiaf0,
+    epias0,
+    epian0, 
+    Q_lvf0,
+    Q_lvs0,
+    Q_lvn0,
+    Q_rvf0,
+    Q_rvs0,
+    Q_rvn0,
+    Q_epif0,
+    Q_epis0,
+    Q_epin0,
+    Q_endof0,
+    Q_endos0,
+    Q_endon0,
+    alphaw,              
     xdofs,
     ydofs,
     zdofs,
@@ -235,9 +269,24 @@ def _compute_fiber_sheet_system(
     for i in range(len(xdofs)):
 
         lv = lv_scalar[sdofs[i]]
+        if lv < tol:
+            lv = tol
         rv = rv_scalar[sdofs[i]]
+        if rv is None and lv >= tol:
+            rv = 0
+            if rv < tol:
+                rv = tol        
         epi = epi_scalar[sdofs[i]]
+        if epi < tol:
+            epi = tol
         lv_rv = lv_rv_scalar[sdofs[i]]
+        if lv_rv < tol:
+            lv_rv = tol
+        #print("lv is#######", lv)    
+        #print("rv is#######", rv)
+        #print("epi is#######", epi)
+        #print("lv_rv is#######", lv_rv)
+
 
         grad_lv[0] = lv_gradient[xdofs[i]]
         grad_lv[1] = lv_gradient[ydofs[i]]
@@ -256,6 +305,7 @@ def _compute_fiber_sheet_system(
         grad_ab[2] = apex_gradient[zdofs[i]]
 
         if epi > 0.5:
+            
             if lv_rv >= 0.5:
                 # We are in the LV region
                 marker_scalar[sdofs[i]] = 1
@@ -271,14 +321,15 @@ def _compute_fiber_sheet_system(
                 alpha_epi = alpha_epi_rv
                 beta_epi = beta_epi_rv
         else:
-            if lv_rv >= 1 - tol:
+            if lv_rv >= 0.9:
                 # We are in the LV region
                 marker_scalar[sdofs[i]] = 1
                 alpha_endo = alpha_endo_lv
                 beta_endo = beta_endo_lv
                 alpha_epi = alpha_epi_lv
                 beta_epi = beta_epi_lv
-            elif lv_rv <= tol:
+            #elif lv_rv <= tol :
+            elif  lv_rv <= 0.1:
                 # We are in the RV region
                 marker_scalar[sdofs[i]] = 2
                 alpha_endo = alpha_endo_rv
@@ -293,7 +344,7 @@ def _compute_fiber_sheet_system(
                 alpha_epi = alpha_epi_sept
                 beta_epi = beta_epi_sept
 
-        Q_fiber = system_at_dof(
+        Q_fiber, Q_lvaxis, Q_rvaxis, Q_epiaxis,Q_lv,Q_rv,Q_epi,Q_endo,alpha_w = system_at_dof(
             lv=lv,
             rv=rv,
             epi=epi,
@@ -310,6 +361,7 @@ def _compute_fiber_sheet_system(
         if Q_fiber is None:
             continue
 
+
         f0[xdofs[i]] = Q_fiber[0, 0]
         f0[ydofs[i]] = Q_fiber[1, 0]
         f0[zdofs[i]] = Q_fiber[2, 0]
@@ -321,3 +373,97 @@ def _compute_fiber_sheet_system(
         n0[xdofs[i]] = Q_fiber[0, 2]
         n0[ydofs[i]] = Q_fiber[1, 2]
         n0[zdofs[i]] = Q_fiber[2, 2]
+##
+        lvaf0[xdofs[i]] = Q_lvaxis[0, 0]
+        lvaf0[ydofs[i]] = Q_lvaxis[1, 0]
+        lvaf0[zdofs[i]] = Q_lvaxis[2, 0]
+
+        lvas0[xdofs[i]] = Q_lvaxis[0, 1]
+        lvas0[ydofs[i]] = Q_lvaxis[1, 1]
+        lvas0[zdofs[i]] = Q_lvaxis[2, 1]
+
+        lvan0[xdofs[i]] = Q_lvaxis[0, 2]
+        lvan0[ydofs[i]] = Q_lvaxis[1, 2]
+        lvan0[zdofs[i]] = Q_lvaxis[2, 2]
+
+##
+        rvaf0[xdofs[i]] = Q_rvaxis[0, 0]
+        rvaf0[ydofs[i]] = Q_rvaxis[1, 0]
+        lvaf0[zdofs[i]] = Q_rvaxis[2, 0]
+
+        rvas0[xdofs[i]] = Q_rvaxis[0, 1]
+        rvas0[ydofs[i]] = Q_rvaxis[1, 1]
+        rvas0[zdofs[i]] = Q_rvaxis[2, 1]
+
+        rvan0[xdofs[i]] = Q_rvaxis[0, 2]
+        rvan0[ydofs[i]] = Q_rvaxis[1, 2]
+        rvan0[zdofs[i]] = Q_rvaxis[2, 2]
+
+
+##
+        epiaf0[xdofs[i]] = Q_epiaxis[0, 0]
+        epiaf0[ydofs[i]] = Q_epiaxis[1, 0]
+        epiaf0[zdofs[i]] = Q_epiaxis[2, 0]
+
+        epias0[xdofs[i]] = Q_epiaxis[0, 1]
+        epias0[ydofs[i]] = Q_epiaxis[1, 1]
+        epias0[zdofs[i]] = Q_epiaxis[2, 1]
+
+        epian0[xdofs[i]] = Q_epiaxis[0, 2]
+        epian0[ydofs[i]] = Q_epiaxis[1, 2]
+        epian0[zdofs[i]] = Q_epiaxis[2, 2] 
+##
+        Q_lvf0[xdofs[i]] = Q_lv[0, 0]
+        Q_lvf0[ydofs[i]] = Q_lv[1, 0]
+        Q_lvf0[zdofs[i]] = Q_lv[2, 0]
+
+        Q_lvs0[xdofs[i]] = Q_lv[0, 1]
+        Q_lvs0[ydofs[i]] = Q_lv[1, 1]
+        Q_lvs0[zdofs[i]] = Q_lv[2, 1]
+
+        Q_lvn0[xdofs[i]] = Q_lv[0, 2]
+        Q_lvn0[ydofs[i]] = Q_lv[1, 2]
+        Q_lvn0[zdofs[i]] = Q_lv[2, 2]
+##
+        Q_rvf0[xdofs[i]] = Q_rv[0, 0]
+        Q_rvf0[ydofs[i]] = Q_rv[1, 0]
+        Q_rvf0[zdofs[i]] = Q_rv[2, 0]
+
+        Q_rvs0[xdofs[i]] = Q_rv[0, 1]
+        Q_rvs0[ydofs[i]] = Q_rv[1, 1]
+        Q_rvs0[zdofs[i]] = Q_rv[2, 1]
+
+        Q_rvn0[xdofs[i]] = Q_rv[0, 2]
+        Q_rvn0[ydofs[i]] = Q_rv[1, 2]
+        Q_rvn0[zdofs[i]] = Q_rv[2, 2]
+##
+        Q_epif0[xdofs[i]] = Q_epi[0, 0]
+        Q_epif0[ydofs[i]] = Q_epi[1, 0]
+        Q_epif0[zdofs[i]] = Q_epi[2, 0]
+
+        Q_epis0[xdofs[i]] = Q_epi[0, 1]
+        Q_epis0[ydofs[i]] = Q_epi[1, 1]
+        Q_epis0[zdofs[i]] = Q_epi[2, 1]
+
+        Q_epin0[xdofs[i]] = Q_epi[0, 2]
+        Q_epin0[ydofs[i]] = Q_epi[1, 2]
+        Q_epin0[zdofs[i]] = Q_epi[2, 2]
+##
+        Q_endof0[xdofs[i]] = Q_endo[0, 0]
+        Q_endof0[ydofs[i]] = Q_endo[1, 0]
+        Q_endof0[zdofs[i]] = Q_endo[2, 0]
+
+        Q_endos0[xdofs[i]] = Q_endo[0, 1]
+        Q_endos0[ydofs[i]] = Q_endo[1, 1]
+        Q_endos0[zdofs[i]] = Q_endo[2, 1]
+
+        Q_endon0[xdofs[i]] = Q_endo[0, 2]
+        Q_endon0[ydofs[i]] = Q_endo[1, 2]
+        Q_endon0[zdofs[i]] = Q_endo[2, 2]
+
+        #marker_scalar[sdofs[i]] = marker_scalar
+        alphaw[sdofs[i]] = alpha_w
+        #alpha_s[sdofs[i]] = alpha_s
+
+
+
